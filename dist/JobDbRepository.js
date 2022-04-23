@@ -60,7 +60,7 @@ class JobDbRepository {
             name: job.attrs.name,
             lockedAt: null,
             nextRunAt: job.attrs.nextRunAt,
-            disabled: { $ne: true }
+            disabled: false
         };
         // Update / options for the MongoDB query
         const update = { $set: { lockedAt: new Date() } };
