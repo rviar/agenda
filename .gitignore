@@ -9,6 +9,5 @@ docs/agenda/*
 !docs/agenda/3.1.0/
 !docs/agenda/4.x/
 !docs/agenda/6.x/
-dist
 .nyc_output
 coverage
