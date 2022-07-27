@@ -3,6 +3,7 @@ import * as debug from 'debug';
 
 import type { Db, Filter, MongoClientOptions, Sort } from 'mongodb';
 import { SortDirection } from 'mongodb';
+import { ForkOptions } from 'child_process';
 import type { IJobDefinition } from './types/JobDefinition';
 import type { IAgendaConfig } from './types/AgendaConfig';
 import type { IDatabaseOptions, IDbConfig, IMongoOptions } from './types/DbOptions';
@@ -13,6 +14,7 @@ import { JobDbRepository } from './JobDbRepository';
 import { JobPriority, parsePriority } from './utils/priority';
 import { JobProcessor } from './JobProcessor';
 import { calculateProcessEvery } from './utils/processEvery';
+import { getCallerFilePath } from './utils/stack';
 
 const log = debug('agenda');
 
@@ -23,7 +25,8 @@ const DefaultOptions = {
 	defaultLockLimit: 0,
 	lockLimit: 0,
 	defaultLockLifetime: 10 * 60 * 1000,
-	sort: { nextRunAt: 1, priority: -1 } as const
+	sort: { nextRunAt: 1, priority: -1 } as const,
+	forkHelper: { path: 'dist/childWorker.js' }
 };
 
 /**
@@ -32,9 +35,15 @@ const DefaultOptions = {
 export class Agenda extends EventEmitter {
 	readonly attrs: IAgendaConfig & IDbConfig;
 
+	public readonly forkedWorker?: boolean;
+
+	public readonly forkHelper?: {
+		path: string;
+		options?: ForkOptions;
+	};
+
 	db: JobDbRepository;
-	// eslint-disable-next-line default-param-last
-	// private jobQueue: JobProcessingQueue;
+
 	// internally used
 	on(event: 'processJob', listener: (job: JobWithId) => void): this;
 
@@ -47,6 +56,11 @@ export class Agenda extends EventEmitter {
 	on(event: 'ready', listener: () => void): this;
 	on(event: 'error', listener: (error: Error) => void): this;
 	on(event: string, listener: (...args) => void): this {
+		if (this.forkedWorker && event !== 'ready') {
+			const warning = new Error('calling on() during a forkedWorker has no effect!');
+			console.warn(warning.message, warning.stack);
+			return this;
+		}
 		return super.on(event, listener);
 	}
 
@@ -60,6 +74,15 @@ export class Agenda extends EventEmitter {
 
 	isActiveJobProcessor(): boolean {
 		return !!this.jobProcessor;
+	}
+
+	async runForkedJob(jobId: string) {
+		const jobData = await this.db.getJobById(jobId);
+		if (!jobData) {
+			throw new Error('db entry not found');
+		}
+		const job = new Job(this, jobData);
+		await job.runJob();
 	}
 
 	async getRunningStats(fullDetails = false): Promise<IAgendaStatus> {
@@ -84,7 +107,10 @@ export class Agenda extends EventEmitter {
 			defaultLockLifetime?: number;
 			// eslint-disable-next-line @typescript-eslint/ban-types
 		} & (IDatabaseOptions | IMongoOptions | {}) &
-			IDbConfig = DefaultOptions,
+			IDbConfig & {
+				forkHelper?: { path: string; options?: ForkOptions };
+				forkedWorker?: boolean;
+			} = DefaultOptions,
 		cb?: (error?: Error) => void
 	) {
 		super();
@@ -99,6 +125,9 @@ export class Agenda extends EventEmitter {
 			defaultLockLifetime: config.defaultLockLifetime || DefaultOptions.defaultLockLifetime, // 10 minute default lockLifetime
 			sort: config.sort || DefaultOptions.sort
 		};
+
+		this.forkedWorker = config.forkedWorker;
+		this.forkHelper = config.forkHelper;
 
 		this.ready = new Promise(resolve => {
 			this.once('ready', resolve);
@@ -309,8 +338,12 @@ export class Agenda extends EventEmitter {
 		if (this.definitions[name]) {
 			log('overwriting already defined agenda job', name);
 		}
+
+		const filePath = getCallerFilePath();
+
 		this.definitions[name] = {
 			fn: processor,
+			filePath,
 			concurrency: options?.concurrency || this.attrs.defaultConcurrency,
 			lockLimit: options?.lockLimit || this.attrs.defaultLockLimit,
 			priority: parsePriority(options?.priority),
@@ -367,31 +400,31 @@ export class Agenda extends EventEmitter {
 		interval: string | number,
 		names: string[],
 		data?: undefined,
-		options?: { timezone?: string; skipImmediate?: boolean }
+		options?: { timezone?: string; skipImmediate?: boolean; forkMode?: boolean }
 	): Promise<Job<void>[]>;
 	async every(
 		interval: string | number,
 		name: string,
 		data?: undefined,
-		options?: { timezone?: string; skipImmediate?: boolean }
+		options?: { timezone?: string; skipImmediate?: boolean; forkMode?: boolean }
 	): Promise<Job<void>>;
 	async every<DATA = unknown>(
 		interval: string | number,
 		names: string[],
 		data: DATA,
-		options?: { timezone?: string; skipImmediate?: boolean }
+		options?: { timezone?: string; skipImmediate?: boolean; forkMode?: boolean }
 	): Promise<Job<DATA>[]>;
 	async every<DATA = unknown>(
 		interval: string | number,
 		name: string,
 		data: DATA,
-		options?: { timezone?: string; skipImmediate?: boolean }
+		options?: { timezone?: string; skipImmediate?: boolean; forkMode?: boolean }
 	): Promise<Job<DATA>>;
 	async every(
 		interval: string | number,
 		names: string | string[],
 		data?: unknown,
-		options?: { timezone?: string; skipImmediate?: boolean }
+		options?: { timezone?: string; skipImmediate?: boolean; forkMode?: boolean }
 	): Promise<Job<any> | Job<any>[]> {
 		/**
 		 * Internal method to setup job that gets run every interval
@@ -407,6 +440,9 @@ export class Agenda extends EventEmitter {
 			const job = this.create(name, data);
 			job.attrs.type = 'single';
 			job.repeatEvery(interval, options);
+			if (options?.forkMode) {
+				job.forkMode(options.forkMode);
+			}
 			await job.save();
 
 			return job;
@@ -502,7 +538,7 @@ export class Agenda extends EventEmitter {
 			this.attrs.processEvery
 		);
 
-		this.on('processJob', job => this.jobProcessor?.process(job));
+		this.on('processJob', this.jobProcessor.process.bind(this.jobProcessor));
 	}
 
 	/**
@@ -516,7 +552,7 @@ export class Agenda extends EventEmitter {
 
 		log('Agenda.stop called, clearing interval for processJobs()');
 
-		const lockedJobs = this.jobProcessor?.stop();
+		const lockedJobs = this.jobProcessor.stop();
 
 		log('Agenda._unlockJobs()');
 		const jobIds = lockedJobs?.map(job => job.attrs._id) || [];
@@ -526,7 +562,7 @@ export class Agenda extends EventEmitter {
 			await this.db.unlockJobs(jobIds);
 		}
 
-		this.off('processJob', this.jobProcessor.process);
+		this.off('processJob', this.jobProcessor.process.bind(this.jobProcessor));
 
 		this.jobProcessor = undefined;
 	}

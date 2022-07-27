@@ -51,25 +51,25 @@ export class JobProcessor {
 				? this.jobQueue.length
 				: this.jobQueue.getQueue().map(job => ({
 						...job.toJson(),
-						canceled: job.canceled?.message || job.canceled
+						canceled: job.getCanceledMessage()
 				  })),
 			runningJobs: !fullDetails
 				? this.runningJobs.length
 				: this.runningJobs.map(job => ({
 						...job.toJson(),
-						canceled: job.canceled?.message || job.canceled
+						canceled: job.getCanceledMessage()
 				  })),
 			lockedJobs: !fullDetails
 				? this.lockedJobs.length
 				: this.lockedJobs.map(job => ({
 						...job.toJson(),
-						canceled: job.canceled?.message || job.canceled
+						canceled: job.getCanceledMessage()
 				  })),
 			jobsToLock: !fullDetails
 				? this.jobsToLock.length
 				: this.jobsToLock.map(job => ({
 						...job.toJson(),
-						canceled: job.canceled?.message || job.canceled
+						canceled: job.getCanceledMessage()
 				  })),
 			isLockingOnTheFly: this.isLockingOnTheFly
 		};
@@ -121,7 +121,7 @@ export class JobProcessor {
 		// Make sure an interval has actually been set
 		// Prevents race condition with 'Agenda.stop' and already scheduled run
 		if (!this.isRunning) {
-			log.extend('process')('JobProcessor got stopped already, returning', this);
+			log.extend('process')('JobProcessor got stopped already, returning');
 			return;
 		}
 
@@ -374,7 +374,7 @@ export class JobProcessor {
 	 * handledJobs keeps list of already processed jobs
 	 * @returns {undefined}
 	 */
-	private jobProcessing(handledJobs: IJobParameters['_id'][] = []) {
+	private async jobProcessing(handledJobs: IJobParameters['_id'][] = []) {
 		// Ensure we have jobs
 		if (this.jobQueue.length === 0) {
 			return;
@@ -395,7 +395,7 @@ export class JobProcessor {
 
 			this.jobQueue.remove(job);
 
-			if (!job.isExpired()) {
+			if (!(await job.isExpired())) {
 				// check if job has expired (and therefore probably got picked up again by another queue in the meantime)
 				// before it even has started to run
 
@@ -482,8 +482,7 @@ export class JobProcessor {
 			// const a = new Error();
 			// console.log('STACK', a.stack);
 			log.extend('runOrRetry')(
-				'JobProcessor got stopped already while calling runOrRetry, returning!',
-				this
+				'JobProcessor got stopped already while calling runOrRetry, returning!'
 			);
 			return;
 		}
@@ -499,6 +498,7 @@ export class JobProcessor {
 			this.runningJobs.push(job);
 			this.updateStatus(job.attrs.name, 'running', 1);
 
+			let jobIsRunning = true;
 			try {
 				log.extend('runOrRetry')('[%s:%s] processing job', job.attrs.name, job.attrs._id);
 
@@ -508,17 +508,43 @@ export class JobProcessor {
 					new Promise<void>((resolve, reject) => {
 						setTimeout(async () => {
 							// when job is not running anymore, just finish
-							if (!(await job.isRunning())) {
+							if (!jobIsRunning) {
+								log.extend('runOrRetry')(
+									'[%s:%s] checkIfJobIsStillAlive detected job is not running anymore. stopping check.',
+									job.attrs.name,
+									job.attrs._id
+								);
 								resolve();
 								return;
 							}
 
-							if (job.isExpired()) {
+							if (await job.isExpired()) {
+								log.extend('runOrRetry')(
+									'[%s:%s] checkIfJobIsStillAlive detected an expired job, killing it.',
+									job.attrs.name,
+									job.attrs._id
+								);
+
 								reject(
 									new Error(
 										`execution of '${job.attrs.name}' canceled, execution took more than ${
 											this.agenda.definitions[job.attrs.name].lockLifetime
 										}ms. Call touch() for long running jobs to keep them alive.`
+									)
+								);
+								return;
+							}
+
+							if (!job.attrs.lockedAt) {
+								log.extend('runOrRetry')(
+									'[%s:%s] checkIfJobIsStillAlive detected a job without a lockedAt value, killing it.',
+									job.attrs.name,
+									job.attrs._id
+								);
+
+								reject(
+									new Error(
+										`execution of '${job.attrs.name}' canceled, no lockedAt date found. Ensure to call touch() for long running jobs to keep them alive.`
 									)
 								);
 								return;
@@ -547,8 +573,7 @@ export class JobProcessor {
 					);
 				}
 			} catch (error: any) {
-				// eslint-disable-next-line no-param-reassign
-				job.canceled = error;
+				job.cancel(error);
 				log.extend('runOrRetry')(
 					'[%s:%s] processing job failed',
 					job.attrs.name,
@@ -557,6 +582,8 @@ export class JobProcessor {
 				);
 				this.agenda.emit('error', error);
 			} finally {
+				jobIsRunning = false;
+
 				// Remove the job from the running queue
 				let runningJobIndex = this.runningJobs.indexOf(job);
 				if (runningJobIndex === -1) {

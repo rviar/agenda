@@ -1,6 +1,7 @@
 import * as date from 'date.js';
 import * as debug from 'debug';
 import { ObjectId } from 'mongodb';
+import { ChildProcess, fork } from 'child_process';
 import type { Agenda } from './index';
 import type { DefinitionProcessor } from './types/JobDefinition';
 import { IJobParameters, datefields, TJobDatefield } from './types/JobParameters';
@@ -19,7 +20,27 @@ export class Job<DATA = unknown | void> {
 	 * you can use it for long running tasks to periodically check if canceled is true,
 	 * also touch will check if and throws that the job got canceled
 	 */
-	canceled: Error | undefined;
+	private canceled?: Error | true;
+
+	getCanceledMessage() {
+		return typeof this.canceled === 'object'
+			? this.canceled?.message || this.canceled
+			: this.canceled;
+	}
+
+	private forkedChild?: ChildProcess;
+
+	cancel(error?: Error) {
+		this.canceled = error || true;
+		if (this.forkedChild) {
+			try {
+				this.forkedChild.send('cancel');
+				console.info('canceled child', this.attrs.name, this.attrs._id);
+			} catch (err) {
+				console.log('cannot send cancel to child');
+			}
+		}
+	}
 
 	/** internal variable to ensure a job does not set unlimited numbers of setTimeouts if the job is not processed
 	 * immediately */
@@ -119,6 +140,16 @@ export class Job<DATA = unknown | void> {
 	}
 
 	/**
+	 * if set, a job is forked via node child process and runs in a seperate/own
+	 * thread
+	 * @param enableForkMode
+	 */
+	forkMode(enableForkMode: boolean): this {
+		this.attrs.fork = enableForkMode;
+		return this;
+	}
+
+	/**
 	 * Prevents the job from running
 	 */
 	disable(): this {
@@ -210,7 +241,7 @@ export class Job<DATA = unknown | void> {
 	 * @returns Whether or not job is running at the moment (true for running)
 	 */
 	async isRunning(): Promise<boolean> {
-		if (!this.byJobProcessor) {
+		if (!this.byJobProcessor || this.attrs.fork) {
 			// we have no job definition, therfore we are not the job processor, but a client call
 			// so we get the real state from database
 			await this.fetchStatus();
@@ -238,6 +269,11 @@ export class Job<DATA = unknown | void> {
 	 * Saves a job to database
 	 */
 	async save(): Promise<Job> {
+		if (this.agenda.forkedWorker) {
+			const warning = new Error('calling save() on a Job during a forkedWorker has no effect!');
+			console.warn(warning.message, warning.stack);
+			return this as Job;
+		}
 		// ensure db connection is ready
 		await this.agenda.ready;
 		return this.agenda.db.saveJob(this as Job);
@@ -251,16 +287,16 @@ export class Job<DATA = unknown | void> {
 	}
 
 	async isDead(): Promise<boolean> {
-		if (!this.byJobProcessor) {
+		return this.isExpired();
+	}
+
+	async isExpired(): Promise<boolean> {
+		if (!this.byJobProcessor || this.attrs.fork) {
 			// we have no job definition, therfore we are not the job processor, but a client call
 			// so we get the real state from database
 			await this.fetchStatus();
 		}
 
-		return this.isExpired();
-	}
-
-	isExpired(): boolean {
 		const definition = this.agenda.definitions[this.attrs.name];
 
 		const lockDeadline = new Date(Date.now() - definition.lockLifetime);
@@ -318,8 +354,6 @@ export class Job<DATA = unknown | void> {
 	}
 
 	async run(): Promise<void> {
-		const definition = this.agenda.definitions[this.attrs.name];
-
 		this.attrs.lastRunAt = new Date();
 		log(
 			'[%s:%s] setting lastRunAt to: %s',
@@ -334,33 +368,56 @@ export class Job<DATA = unknown | void> {
 			this.agenda.emit('start', this);
 			this.agenda.emit(`start:${this.attrs.name}`, this);
 			log('[%s:%s] starting job', this.attrs.name, this.attrs._id);
-			if (!definition) {
-				log('[%s:%s] has no definition, can not run', this.attrs.name, this.attrs._id);
-				throw new Error('Undefined job');
-			}
 
-			if (definition.fn.length === 2) {
-				log('[%s:%s] process function being called', this.attrs.name, this.attrs._id);
+			if (this.attrs.fork) {
+				if (!this.agenda.forkHelper) {
+					throw new Error('no forkHelper specified, you need to set a path to a helper script');
+				}
+				const { forkHelper } = this.agenda;
+
 				await new Promise<void>((resolve, reject) => {
-					try {
-						const result = definition.fn(this as Job, error => {
-							if (error) {
-								reject(error);
-								return;
-							}
-							resolve();
-						});
+					this.forkedChild = fork(
+						forkHelper.path,
+						[
+							this.attrs.name,
+							this.attrs._id!.toString(),
+							this.agenda.definitions[this.attrs.name].filePath || ''
+						],
+						forkHelper.options
+					);
 
-						if (this.isPromise(result)) {
-							result.catch((error: Error) => reject(error));
+					let childError: any;
+					this.forkedChild.on('close', code => {
+						if (code) {
+							console.info(
+								'fork parameters',
+								forkHelper,
+								this.attrs.name,
+								this.attrs._id,
+								this.agenda.definitions[this.attrs.name].filePath
+							);
+							const error = new Error(`child process exited with code: ${code}`);
+							console.warn(error.message, childError || this.canceled);
+							reject(childError || this.canceled || error);
+						} else {
+							resolve();
 						}
-					} catch (error) {
-						reject(error);
-					}
+					});
+					this.forkedChild.on('message', message => {
+						// console.log(`Message from child.js: ${message}`, JSON.stringify(message));
+						if (typeof message === 'string') {
+							try {
+								childError = JSON.parse(message);
+							} catch (errJson) {
+								childError = message;
+							}
+						} else {
+							childError = message;
+						}
+					});
 				});
 			} else {
-				log('[%s:%s] process function being called', this.attrs.name, this.attrs._id);
-				await (definition.fn as DefinitionProcessor<DATA, void>)(this);
+				await this.runJob();
 			}
 
 			this.attrs.lastFinishedAt = new Date();
@@ -377,6 +434,7 @@ export class Job<DATA = unknown | void> {
 			this.agenda.emit(`fail:${this.attrs.name}`, error, this);
 			log('[%s:%s] has failed [%s]', this.attrs.name, this.attrs._id, error.message);
 		} finally {
+			this.forkedChild = undefined;
 			this.attrs.lockedAt = undefined;
 			try {
 				await this.agenda.db.saveJobState(this);
@@ -395,6 +453,39 @@ export class Job<DATA = unknown | void> {
 				this.attrs._id,
 				this.attrs.lastFinishedAt
 			);
+		}
+	}
+
+	async runJob() {
+		const definition = this.agenda.definitions[this.attrs.name];
+
+		if (!definition) {
+			log('[%s:%s] has no definition, can not run', this.attrs.name, this.attrs._id);
+			throw new Error('Undefined job');
+		}
+
+		if (definition.fn.length === 2) {
+			log('[%s:%s] process function being called', this.attrs.name, this.attrs._id);
+			await new Promise<void>((resolve, reject) => {
+				try {
+					const result = definition.fn(this as Job, error => {
+						if (error) {
+							reject(error);
+							return;
+						}
+						resolve();
+					});
+
+					if (this.isPromise(result)) {
+						result.catch((error: Error) => reject(error));
+					}
+				} catch (error) {
+					reject(error);
+				}
+			});
+		} else {
+			log('[%s:%s] process function being called', this.attrs.name, this.attrs._id);
+			await (definition.fn as DefinitionProcessor<DATA, void>)(this);
 		}
 	}
 

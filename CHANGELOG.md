@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [6.2.11](https://github.com/hokify/agenda/compare/v6.2.10...v6.2.11) (2022-05-23)
+
+
+### Bug Fixes
+
+* bind correct context to process ([cf70739](https://github.com/hokify/agenda/commit/cf707396707b36d293eb99a79fbc618b75a54900))
+
+### [6.2.10](https://github.com/hokify/agenda/compare/v6.2.9...v6.2.10) (2022-05-23)
+
+
+### Bug Fixes
+
+* check if lockedAt has been resetted in the meantime ([aa5323b](https://github.com/hokify/agenda/commit/aa5323b5669453761e8a1ddd146df828e6b2b410))
+* improve errors for childs ([8e3b827](https://github.com/hokify/agenda/commit/8e3b8277d839c935e69f31a57177c7f79dbec836))
+
+### [6.2.9](https://github.com/hokify/agenda/compare/v6.2.8...v6.2.9) (2022-05-20)
+
+
+### Bug Fixes
+
+* job timeout check and improve error handling for childs ([b365957](https://github.com/hokify/agenda/commit/b36595745e8b43939f9938b78af8d5a2e033b8fb))
+
+### [6.2.8](https://github.com/hokify/agenda/compare/v6.2.7...v6.2.8) (2022-05-11)
+
+
+### Bug Fixes
+
+* use message bus instead of signal to cancel child ([fcec3a9](https://github.com/hokify/agenda/commit/fcec3a9bf43e36d4d3d81319ac71d1b3b01e16be))
+
+### [6.2.7](https://github.com/hokify/agenda/compare/v6.2.6...v6.2.7) (2022-05-11)
+
+
+### Bug Fixes
+
+* use different appraoch to find definition file ([9d4c60e](https://github.com/hokify/agenda/commit/9d4c60ef7583a3bd27e4ed626624b684079f06bc))
+
+### [6.2.6](https://github.com/hokify/agenda/compare/v6.2.5...v6.2.6) (2022-05-10)
+
+
+### Bug Fixes
+
+* add fork paramters to console ([9f2e7fd](https://github.com/hokify/agenda/commit/9f2e7fd5351dd42a060059fcb03234afb1dd9d8a))
+
+### [6.2.5](https://github.com/hokify/agenda/compare/v6.2.4...v6.2.5) (2022-05-10)
+
+
+### Bug Fixes
+
+* improve exit code error message ([f1a5eb8](https://github.com/hokify/agenda/commit/f1a5eb816de789c64a65a44f9443f286c794caf6))
+
+### [6.2.4](https://github.com/hokify/agenda/compare/v6.2.3...v6.2.4) (2022-05-10)
+
+
+### Bug Fixes
+
+* check if abort controller is supported ([a00d611](https://github.com/hokify/agenda/commit/a00d611839e69318fe5e71cfa600a344c3dc6746))
+
+### [6.2.3](https://github.com/hokify/agenda/compare/v6.2.2...v6.2.3) (2022-05-10)
+
+### [6.2.2](https://github.com/hokify/agenda/compare/v6.2.1...v6.2.2) (2022-05-10)
+
+
+### Bug Fixes
+
+* allow passing forkMode to every ([ff274ba](https://github.com/hokify/agenda/commit/ff274babb98ed859625986a174bcc27d36346820))
+
+### [6.2.1](https://github.com/hokify/agenda/compare/v6.2.0...v6.2.1) (2022-05-10)
+
+
+### Bug Fixes
+
+* small code cleanups and new flag to toggle ([2a6e5fe](https://github.com/hokify/agenda/commit/2a6e5fe12e40447f1e30f1d53deb99c47ae92e68))
+
+## [6.2.0](https://github.com/hokify/agenda/compare/v6.1.1...v6.2.0) (2022-05-09)
+
+
+### Features
+
+* allow to fork jobs in isolated sub process ([2a68c95](https://github.com/hokify/agenda/commit/2a68c9574e888b8b91196f6b237d901d944340a4))
+
 ### [6.1.1](https://github.com/hokify/agenda/compare/v6.1.0...v6.1.1) (2022-04-05)
 
 ## [6.1.0](https://github.com/hokify/agenda/compare/v6.0.9...v6.1.0) (2022-03-21)
