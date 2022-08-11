@@ -13,7 +13,10 @@ export declare class Job<DATA = unknown | void> {
      * you can use it for long running tasks to periodically check if canceled is true,
      * also touch will check if and throws that the job got canceled
      */
-    canceled: Error | undefined;
+    private canceled?;
+    getCanceledMessage(): string | true | Error | undefined;
+    private forkedChild?;
+    cancel(error?: Error): void;
     /** internal variable to ensure a job does not set unlimited numbers of setTimeouts if the job is not processed
      * immediately */
     gotTimerToExecute: boolean;
@@ -50,6 +53,12 @@ export declare class Job<DATA = unknown | void> {
      * @param time
      */
     repeatAt(time: string): this;
+    /**
+     * if set, a job is forked via node child process and runs in a seperate/own
+     * thread
+     * @param enableForkMode
+     */
+    forkMode(enableForkMode: boolean): this;
     /**
      * Prevents the job from running
      */
@@ -98,7 +107,7 @@ export declare class Job<DATA = unknown | void> {
      */
     remove(): Promise<number>;
     isDead(): Promise<boolean>;
-    isExpired(): boolean;
+    isExpired(): Promise<boolean>;
     /**
      * Updates "lockedAt" time so the job does not get picked up again
      * @param progress 0 to 100
@@ -106,6 +115,7 @@ export declare class Job<DATA = unknown | void> {
     touch(progress?: number): Promise<void>;
     private computeNextRunAt;
     run(): Promise<void>;
+    runJob(): Promise<void>;
     private isPromise;
 }
 export declare type JobWithId = Job & {

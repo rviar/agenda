@@ -14,6 +14,7 @@ export declare class JobDbRepository {
     private createConnection;
     private hasMongoConnection;
     private hasDatabaseConfig;
+    getJobById(id: string): Promise<import("mongodb").WithId<IJobParameters<unknown>> | null>;
     getJobs(query: Filter<IJobParameters>, sort?: Sort, limit?: number, skip?: number): Promise<IJobParameters[]>;
     removeJobs(query: Filter<IJobParameters>): Promise<number>;
     getQueueSize(): Promise<number>;

@@ -8,6 +8,7 @@ export interface IJobDefinition<DATA = unknown> {
     priority?: number;
     /** how many jobs of this kind can run in parallel/simultanously per Agenda instance */
     concurrency?: number;
+    filePath: string | undefined;
     fn: DefinitionProcessor<DATA, void | ((error?: Error) => void)>;
 }
 export declare type DefinitionProcessor<DATA, CB> = (agendaJob: Job<DATA>, done: CB) => CB extends void ? Promise<void> : void;

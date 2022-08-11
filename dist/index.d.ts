@@ -1,7 +1,9 @@
 /// <reference types="node" />
+/// <reference types="node" />
 import { EventEmitter } from 'events';
 import type { Db, Filter, MongoClientOptions, Sort } from 'mongodb';
 import { SortDirection } from 'mongodb';
+import { ForkOptions } from 'child_process';
 import type { IJobDefinition } from './types/JobDefinition';
 import type { IAgendaConfig } from './types/AgendaConfig';
 import type { IDatabaseOptions, IDbConfig, IMongoOptions } from './types/DbOptions';
@@ -15,6 +17,11 @@ import { JobPriority } from './utils/priority';
  */
 export declare class Agenda extends EventEmitter {
     readonly attrs: IAgendaConfig & IDbConfig;
+    readonly forkedWorker?: boolean;
+    readonly forkHelper?: {
+        path: string;
+        options?: ForkOptions;
+    };
     db: JobDbRepository;
     on(event: 'processJob', listener: (job: JobWithId) => void): this;
     on(event: 'fail', listener: (error: Error, job: JobWithId) => void): this;
@@ -31,6 +38,7 @@ export declare class Agenda extends EventEmitter {
     private jobProcessor?;
     readonly ready: Promise<void>;
     isActiveJobProcessor(): boolean;
+    runForkedJob(jobId: string): Promise<void>;
     getRunningStats(fullDetails?: boolean): Promise<IAgendaStatus>;
     /**
      * @param {Object} config - Agenda Config
@@ -44,7 +52,13 @@ export declare class Agenda extends EventEmitter {
         defaultLockLimit?: number;
         lockLimit?: number;
         defaultLockLifetime?: number;
-    } & (IDatabaseOptions | IMongoOptions | {}) & IDbConfig, cb?: (error?: Error) => void);
+    } & (IDatabaseOptions | IMongoOptions | {}) & IDbConfig & {
+        forkHelper?: {
+            path: string;
+            options?: ForkOptions;
+        };
+        forkedWorker?: boolean;
+    }, cb?: (error?: Error) => void);
     /**
      * Connect to the spec'd MongoDB server and database.
      */
@@ -157,18 +171,22 @@ export declare class Agenda extends EventEmitter {
     every(interval: string | number, names: string[], data?: undefined, options?: {
         timezone?: string;
         skipImmediate?: boolean;
+        forkMode?: boolean;
     }): Promise<Job<void>[]>;
     every(interval: string | number, name: string, data?: undefined, options?: {
         timezone?: string;
         skipImmediate?: boolean;
+        forkMode?: boolean;
     }): Promise<Job<void>>;
     every<DATA = unknown>(interval: string | number, names: string[], data: DATA, options?: {
         timezone?: string;
         skipImmediate?: boolean;
+        forkMode?: boolean;
     }): Promise<Job<DATA>[]>;
     every<DATA = unknown>(interval: string | number, name: string, data: DATA, options?: {
         timezone?: string;
         skipImmediate?: boolean;
+        forkMode?: boolean;
     }): Promise<Job<DATA>>;
     /**
      * Schedule a job or jobs at a specific time

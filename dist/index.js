@@ -22,6 +22,7 @@ const JobDbRepository_1 = require("./JobDbRepository");
 const priority_1 = require("./utils/priority");
 const JobProcessor_1 = require("./JobProcessor");
 const processEvery_1 = require("./utils/processEvery");
+const stack_1 = require("./utils/stack");
 const log = debug('agenda');
 const DefaultOptions = {
     processEvery: 5000,
@@ -30,7 +31,8 @@ const DefaultOptions = {
     defaultLockLimit: 0,
     lockLimit: 0,
     defaultLockLifetime: 10 * 60 * 1000,
-    sort: { nextRunAt: 1, priority: -1 }
+    sort: { nextRunAt: 1, priority: -1 },
+    forkHelper: { path: 'dist/childWorker.js' }
 };
 /**
  * @class
@@ -53,6 +55,8 @@ class Agenda extends events_1.EventEmitter {
             defaultLockLifetime: config.defaultLockLifetime || DefaultOptions.defaultLockLifetime,
             sort: config.sort || DefaultOptions.sort
         };
+        this.forkedWorker = config.forkedWorker;
+        this.forkHelper = config.forkHelper;
         this.ready = new Promise(resolve => {
             this.once('ready', resolve);
         });
@@ -65,10 +69,23 @@ class Agenda extends events_1.EventEmitter {
         }
     }
     on(event, listener) {
+        if (this.forkedWorker && event !== 'ready') {
+            const warning = new Error(`calling on(${event}) during a forkedWorker has no effect!`);
+            console.warn(warning.message, warning.stack);
+            return this;
+        }
         return super.on(event, listener);
     }
     isActiveJobProcessor() {
         return !!this.jobProcessor;
+    }
+    async runForkedJob(jobId) {
+        const jobData = await this.db.getJobById(jobId);
+        if (!jobData) {
+            throw new Error('db entry not found');
+        }
+        const job = new Job_1.Job(this, jobData);
+        await job.runJob();
     }
     async getRunningStats(fullDetails = false) {
         if (!this.jobProcessor) {
@@ -215,8 +232,10 @@ class Agenda extends events_1.EventEmitter {
         if (this.definitions[name]) {
             log('overwriting already defined agenda job', name);
         }
+        const filePath = (0, stack_1.getCallerFilePath)();
         this.definitions[name] = {
             fn: processor,
+            filePath,
             concurrency: (options === null || options === void 0 ? void 0 : options.concurrency) || this.attrs.defaultConcurrency,
             lockLimit: (options === null || options === void 0 ? void 0 : options.lockLimit) || this.attrs.defaultLockLimit,
             priority: (0, priority_1.parsePriority)(options === null || options === void 0 ? void 0 : options.priority),
@@ -263,6 +282,9 @@ class Agenda extends events_1.EventEmitter {
             const job = this.create(name, data);
             job.attrs.type = 'single';
             job.repeatEvery(interval, options);
+            if (options === null || options === void 0 ? void 0 : options.forkMode) {
+                job.forkMode(options.forkMode);
+            }
             await job.save();
             return job;
         };
@@ -312,26 +334,25 @@ class Agenda extends events_1.EventEmitter {
             return;
         }
         this.jobProcessor = new JobProcessor_1.JobProcessor(this, this.attrs.maxConcurrency, this.attrs.lockLimit, this.attrs.processEvery);
-        this.on('processJob', job => { var _a; return (_a = this.jobProcessor) === null || _a === void 0 ? void 0 : _a.process(job); });
+        this.on('processJob', this.jobProcessor.process.bind(this.jobProcessor));
     }
     /**
      * Clear the interval that processes the jobs and unlocks all currently locked jobs
      */
     async stop() {
-        var _a;
         if (!this.jobProcessor) {
             log('Agenda.stop called, but agenda has never started!');
             return;
         }
         log('Agenda.stop called, clearing interval for processJobs()');
-        const lockedJobs = (_a = this.jobProcessor) === null || _a === void 0 ? void 0 : _a.stop();
+        const lockedJobs = this.jobProcessor.stop();
         log('Agenda._unlockJobs()');
         const jobIds = (lockedJobs === null || lockedJobs === void 0 ? void 0 : lockedJobs.map(job => job.attrs._id)) || [];
         if (jobIds.length > 0) {
             log('about to unlock jobs with ids: %O', jobIds);
             await this.db.unlockJobs(jobIds);
         }
-        this.off('processJob', this.jobProcessor.process);
+        this.off('processJob', this.jobProcessor.process.bind(this.jobProcessor));
         this.jobProcessor = undefined;
     }
 }

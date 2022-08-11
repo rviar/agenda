@@ -33,6 +33,9 @@ class JobDbRepository {
         var _a;
         return !!((_a = connectOptions === null || connectOptions === void 0 ? void 0 : connectOptions.db) === null || _a === void 0 ? void 0 : _a.address);
     }
+    async getJobById(id) {
+        return this.collection.findOne({ _id: new mongodb_1.ObjectId(id) });
+    }
     async getJobs(query, sort = {}, limit = 0, skip = 0) {
         return this.collection.find(query).sort(sort).limit(limit).skip(skip).toArray();
     }
