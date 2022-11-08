@@ -52,7 +52,7 @@ export declare class Agenda extends EventEmitter {
         defaultLockLimit?: number;
         lockLimit?: number;
         defaultLockLifetime?: number;
-        fifoMode: boolean;
+        fifoMode?: boolean;
     } & (IDatabaseOptions | IMongoOptions | {}) & IDbConfig & {
         forkHelper?: {
             path: string;

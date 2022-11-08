@@ -33,7 +33,7 @@ const DefaultOptions = {
     defaultLockLifetime: 10 * 60 * 1000,
     sort: { nextRunAt: 1, priority: -1 },
     forkHelper: { path: 'dist/childWorker.js' },
-    fifoMode: false,
+    fifoMode: false
 };
 /**
  * @class
@@ -55,7 +55,7 @@ class Agenda extends events_1.EventEmitter {
             lockLimit: config.lockLimit || DefaultOptions.lockLimit,
             defaultLockLifetime: config.defaultLockLifetime || DefaultOptions.defaultLockLifetime,
             sort: config.sort || DefaultOptions.sort,
-            fifoMode: config.fifoMode,
+            fifoMode: config.fifoMode
         };
         this.forkedWorker = config.forkedWorker;
         this.forkHelper = config.forkHelper;
