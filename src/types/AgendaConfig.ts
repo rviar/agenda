@@ -13,5 +13,5 @@ export interface IAgendaConfig {
 
 	defaultLockLifetime: number;
 
-	fifoMode: boolean;
+	fifoMode?: boolean;
 }
