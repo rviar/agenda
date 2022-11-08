@@ -55,7 +55,7 @@ class Agenda extends events_1.EventEmitter {
             lockLimit: config.lockLimit || DefaultOptions.lockLimit,
             defaultLockLifetime: config.defaultLockLifetime || DefaultOptions.defaultLockLifetime,
             sort: config.sort || DefaultOptions.sort,
-            fifoMode: config.fifoMode
+            fifoMode: config.fifoMode || DefaultOptions.fifoMode
         };
         this.forkedWorker = config.forkedWorker;
         this.forkHelper = config.forkHelper;
