@@ -24,7 +24,9 @@ export declare class JobDbRepository {
      */
     unlockJobs(jobIds: ObjectId[]): Promise<void>;
     lockJob(job: JobWithId): Promise<IJobParameters | undefined>;
-    getNextJobToRun(jobName: string, nextScanAt: Date, lockDeadline: Date, now?: Date): Promise<IJobParameters | undefined>;
+    getNextJobToRun(jobName: string, nextScanAt: Date, lockDeadline: Date): Promise<IJobParameters | undefined>;
+    private getNextJobToRunDefaultQuery;
+    private getNextJobToRunFiFoModeQuery;
     connect(): Promise<void>;
     private database;
     private processDbResult;

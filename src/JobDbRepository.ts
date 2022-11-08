@@ -3,6 +3,7 @@ import {
 	Collection,
 	Db,
 	Filter,
+	FindOneAndDeleteOptions,
 	FindOneAndUpdateOptions,
 	MongoClient,
 	MongoClientOptions,
@@ -124,6 +125,18 @@ export class JobDbRepository {
 	async getNextJobToRun(
 		jobName: string,
 		nextScanAt: Date,
+		lockDeadline: Date
+	): Promise<IJobParameters | undefined> {
+		if (this.agenda.attrs.fifoMode) {
+			return this.getNextJobToRunFiFoModeQuery(jobName);
+		}
+
+		return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
+	}
+
+	private async getNextJobToRunDefaultQuery(
+		jobName: string,
+		nextScanAt: Date,
 		lockDeadline: Date,
 		now: Date = new Date()
 	): Promise<IJobParameters | undefined> {
@@ -162,6 +175,31 @@ export class JobDbRepository {
 		const result = await this.collection.findOneAndUpdate(
 			JOB_PROCESS_WHERE_QUERY,
 			JOB_PROCESS_SET_QUERY,
+			JOB_RETURN_QUERY
+		);
+
+		return result.value || undefined;
+	}
+
+	private async getNextJobToRunFiFoModeQuery(jobName: string): Promise<IJobParameters | undefined> {
+		/**
+		 * Query used to find job to run
+		 */
+		const JOB_PROCESS_WHERE_QUERY: Filter<IJobParameters /* Omit<IJobParameters, 'lockedAt'> & { lockedAt?: Date | null } */> =
+			{
+				name: jobName
+			};
+
+		/**
+		 * Query used to affect what gets returned
+		 */
+		const JOB_RETURN_QUERY: FindOneAndDeleteOptions = {
+			sort: { _id: 1 }
+		};
+
+		// Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
+		const result = await this.collection.findOneAndDelete(
+			JOB_PROCESS_WHERE_QUERY,
 			JOB_RETURN_QUERY
 		);
 
@@ -246,6 +284,9 @@ export class JobDbRepository {
 	}
 
 	async saveJobState(job: Job<any>): Promise<void> {
+		// skip this method for fifoMode
+		if (this.agenda.attrs.fifoMode) return;
+
 		const id = job.attrs._id;
 		const $set = {
 			lockedAt: (job.attrs.lockedAt && new Date(job.attrs.lockedAt)) || undefined,

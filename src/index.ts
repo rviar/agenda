@@ -26,7 +26,8 @@ const DefaultOptions = {
 	lockLimit: 0,
 	defaultLockLifetime: 10 * 60 * 1000,
 	sort: { nextRunAt: 1, priority: -1 } as const,
-	forkHelper: { path: 'dist/childWorker.js' }
+	forkHelper: { path: 'dist/childWorker.js' },
+  fifoMode: false,
 };
 
 /**
@@ -105,6 +106,7 @@ export class Agenda extends EventEmitter {
 			defaultLockLimit?: number;
 			lockLimit?: number;
 			defaultLockLifetime?: number;
+      fifoMode: boolean;
 			// eslint-disable-next-line @typescript-eslint/ban-types
 		} & (IDatabaseOptions | IMongoOptions | {}) &
 			IDbConfig & {
@@ -123,7 +125,8 @@ export class Agenda extends EventEmitter {
 			defaultLockLimit: config.defaultLockLimit || DefaultOptions.defaultLockLimit,
 			lockLimit: config.lockLimit || DefaultOptions.lockLimit,
 			defaultLockLifetime: config.defaultLockLifetime || DefaultOptions.defaultLockLifetime, // 10 minute default lockLifetime
-			sort: config.sort || DefaultOptions.sort
+			sort: config.sort || DefaultOptions.sort,
+      fifoMode: config.fifoMode,
 		};
 
 		this.forkedWorker = config.forkedWorker;

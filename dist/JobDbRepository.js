@@ -75,7 +75,13 @@ class JobDbRepository {
         const resp = await this.collection.findOneAndUpdate(criteria, update, options);
         return (resp === null || resp === void 0 ? void 0 : resp.value) || undefined;
     }
-    async getNextJobToRun(jobName, nextScanAt, lockDeadline, now = new Date()) {
+    async getNextJobToRun(jobName, nextScanAt, lockDeadline) {
+        if (this.agenda.attrs.fifoMode) {
+            return this.getNextJobToRunFiFoModeQuery(jobName);
+        }
+        return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
+    }
+    async getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline, now = new Date()) {
         /**
          * Query used to find job to run
          */
@@ -105,6 +111,23 @@ class JobDbRepository {
         };
         // Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
         const result = await this.collection.findOneAndUpdate(JOB_PROCESS_WHERE_QUERY, JOB_PROCESS_SET_QUERY, JOB_RETURN_QUERY);
+        return result.value || undefined;
+    }
+    async getNextJobToRunFiFoModeQuery(jobName) {
+        /**
+         * Query used to find job to run
+         */
+        const JOB_PROCESS_WHERE_QUERY = {
+            name: jobName
+        };
+        /**
+         * Query used to affect what gets returned
+         */
+        const JOB_RETURN_QUERY = {
+            sort: { _id: 1 }
+        };
+        // Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
+        const result = await this.collection.findOneAndDelete(JOB_PROCESS_WHERE_QUERY, JOB_RETURN_QUERY);
         return result.value || undefined;
     }
     async connect() {
@@ -162,6 +185,9 @@ class JobDbRepository {
         return job;
     }
     async saveJobState(job) {
+        // skip this method for fifoMode
+        if (this.agenda.attrs.fifoMode)
+            return;
         const id = job.attrs._id;
         const $set = {
             lockedAt: (job.attrs.lockedAt && new Date(job.attrs.lockedAt)) || undefined,
