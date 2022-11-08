@@ -47,6 +47,8 @@ class JobDbRepository {
         return this.collection.countDocuments({ nextRunAt: { $lt: new Date() } });
     }
     async unlockJob(job) {
+        if (this.agenda.attrs.fifoMode)
+            return;
         // only unlock jobs which are not currently processed (nextRunAT is not null)
         await this.collection.updateOne({ _id: job.attrs._id, nextRunAt: { $ne: null } }, { $unset: { lockedAt: true } });
     }
@@ -57,6 +59,10 @@ class JobDbRepository {
         await this.collection.updateMany({ _id: { $in: jobIds }, nextRunAt: { $ne: null } }, { $unset: { lockedAt: true } });
     }
     async lockJob(job) {
+        if (this.agenda.attrs.fifoMode) {
+            const resp = await this.collection.findOneAndDelete({ _id: job.attrs._id });
+            return (resp === null || resp === void 0 ? void 0 : resp.value) || undefined;
+        }
         // Query to run against collection to see if we need to lock it
         const criteria = {
             _id: job.attrs._id,
@@ -82,6 +88,7 @@ class JobDbRepository {
         return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
     }
     async getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline, now = new Date()) {
+        log('getNextJobToRunDefaultQuery() called with success');
         /**
          * Query used to find job to run
          */
@@ -114,6 +121,7 @@ class JobDbRepository {
         return result.value || undefined;
     }
     async getNextJobToRunFiFoModeQuery(jobName) {
+        log('getNextJobToRunFiFoModeQuery() called with success');
         /**
          * Query used to find job to run
          */
@@ -126,7 +134,7 @@ class JobDbRepository {
         const JOB_RETURN_QUERY = {
             sort: { _id: 1 }
         };
-        // Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
+        // Find ONE and ONLY ONE job and delete from queue;
         const result = await this.collection.findOneAndDelete(JOB_PROCESS_WHERE_QUERY, JOB_RETURN_QUERY);
         return result.value || undefined;
     }

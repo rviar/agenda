@@ -78,6 +78,7 @@ export class JobDbRepository {
 	}
 
 	async unlockJob(job: Job): Promise<void> {
+		if (this.agenda.attrs.fifoMode) return;
 		// only unlock jobs which are not currently processed (nextRunAT is not null)
 		await this.collection.updateOne(
 			{ _id: job.attrs._id, nextRunAt: { $ne: null } },
@@ -96,6 +97,10 @@ export class JobDbRepository {
 	}
 
 	async lockJob(job: JobWithId): Promise<IJobParameters | undefined> {
+		if (this.agenda.attrs.fifoMode) {
+			const resp = await this.collection.findOneAndDelete({ _id: job.attrs._id });
+			return resp?.value || undefined;
+		}
 		// Query to run against collection to see if we need to lock it
 		const criteria: Filter<Omit<IJobParameters, 'lockedAt'> & { lockedAt?: Date | null }> = {
 			_id: job.attrs._id,
@@ -140,6 +145,7 @@ export class JobDbRepository {
 		lockDeadline: Date,
 		now: Date = new Date()
 	): Promise<IJobParameters | undefined> {
+		log('getNextJobToRunDefaultQuery() called with success');
 		/**
 		 * Query used to find job to run
 		 */
@@ -182,6 +188,7 @@ export class JobDbRepository {
 	}
 
 	private async getNextJobToRunFiFoModeQuery(jobName: string): Promise<IJobParameters | undefined> {
+		log('getNextJobToRunFiFoModeQuery() called with success');
 		/**
 		 * Query used to find job to run
 		 */
@@ -197,7 +204,7 @@ export class JobDbRepository {
 			sort: { _id: 1 }
 		};
 
-		// Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
+		// Find ONE and ONLY ONE job and delete from queue;
 		const result = await this.collection.findOneAndDelete(
 			JOB_PROCESS_WHERE_QUERY,
 			JOB_RETURN_QUERY
