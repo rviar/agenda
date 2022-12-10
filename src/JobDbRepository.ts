@@ -133,7 +133,7 @@ export class JobDbRepository {
 		lockDeadline: Date
 	): Promise<IJobParameters | undefined> {
 		if (this.agenda.attrs.fifoMode) {
-			return this.getNextJobToRunFiFoModeQuery(jobName);
+			return this.getNextJobToRunFiFoModeQuery(jobName, lockDeadline);
 		}
 
 		return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
@@ -187,7 +187,10 @@ export class JobDbRepository {
 		return result.value || undefined;
 	}
 
-	private async getNextJobToRunFiFoModeQuery(jobName: string): Promise<IJobParameters | undefined> {
+	private async getNextJobToRunFiFoModeQuery(
+		jobName: string,
+		lockDeadline: Date
+	): Promise<IJobParameters | undefined> {
 		log('getNextJobToRunFiFoModeQuery() called with success');
 		/**
 		 * Query used to find job to run
@@ -209,6 +212,10 @@ export class JobDbRepository {
 			JOB_PROCESS_WHERE_QUERY,
 			JOB_RETURN_QUERY
 		);
+
+		if (result && result.value) {
+			result.value.lockedAt = lockDeadline;
+		}
 
 		return result.value || undefined;
 	}

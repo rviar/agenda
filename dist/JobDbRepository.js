@@ -83,7 +83,7 @@ class JobDbRepository {
     }
     async getNextJobToRun(jobName, nextScanAt, lockDeadline) {
         if (this.agenda.attrs.fifoMode) {
-            return this.getNextJobToRunFiFoModeQuery(jobName);
+            return this.getNextJobToRunFiFoModeQuery(jobName, lockDeadline);
         }
         return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
     }
@@ -120,7 +120,7 @@ class JobDbRepository {
         const result = await this.collection.findOneAndUpdate(JOB_PROCESS_WHERE_QUERY, JOB_PROCESS_SET_QUERY, JOB_RETURN_QUERY);
         return result.value || undefined;
     }
-    async getNextJobToRunFiFoModeQuery(jobName) {
+    async getNextJobToRunFiFoModeQuery(jobName, lockDeadline) {
         log('getNextJobToRunFiFoModeQuery() called with success');
         /**
          * Query used to find job to run
@@ -136,6 +136,9 @@ class JobDbRepository {
         };
         // Find ONE and ONLY ONE job and delete from queue;
         const result = await this.collection.findOneAndDelete(JOB_PROCESS_WHERE_QUERY, JOB_RETURN_QUERY);
+        if (result && result.value) {
+            result.value.lockedAt = lockDeadline;
+        }
         return result.value || undefined;
     }
     async connect() {
