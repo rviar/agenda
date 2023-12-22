@@ -88,7 +88,6 @@ class JobDbRepository {
         return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
     }
     async getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline, now = new Date()) {
-        var _a;
         log('getNextJobToRunDefaultQuery() called with success');
         /**
          * Query used to find job to run
@@ -119,10 +118,9 @@ class JobDbRepository {
         };
         // Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
         const result = await this.collection.findOneAndUpdate(JOB_PROCESS_WHERE_QUERY, JOB_PROCESS_SET_QUERY, JOB_RETURN_QUERY);
-        return (_a = result === null || result === void 0 ? void 0 : result.value) !== null && _a !== void 0 ? _a : undefined;
+        return result.value || undefined;
     }
     async getNextJobToRunFiFoModeQuery(jobName, now = new Date()) {
-        var _a;
         log('getNextJobToRunFiFoModeQuery() called with success');
         /**
          * Query used to find job to run
@@ -141,7 +139,7 @@ class JobDbRepository {
         if (result && result.value) {
             result.value.lockedAt = now;
         }
-        return (_a = result === null || result === void 0 ? void 0 : result.value) !== null && _a !== void 0 ? _a : undefined;
+        return result.value || undefined;
     }
     async connect() {
         var _a;
