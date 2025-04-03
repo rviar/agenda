@@ -60,7 +60,7 @@ class JobDbRepository {
     }
     async lockJob(job) {
         if (this.agenda.attrs.fifoMode) {
-            const resp = await this.collection.findOneAndDelete({ _id: job.attrs._id });
+            const resp = await this.collection.findOneAndDelete({ _id: job.attrs._id }, { includeResultMetadata: true });
             return (resp === null || resp === void 0 ? void 0 : resp.value) || undefined;
         }
         // Query to run against collection to see if we need to lock it
@@ -79,7 +79,7 @@ class JobDbRepository {
         };
         // Lock the job in MongoDB!
         const resp = await this.collection.findOneAndUpdate(criteria, update, options);
-        return (resp === null || resp === void 0 ? void 0 : resp.value) || undefined;
+        return resp || undefined;
     }
     async getNextJobToRun(jobName, nextScanAt, lockDeadline) {
         if (this.agenda.attrs.fifoMode) {
@@ -88,7 +88,6 @@ class JobDbRepository {
         return this.getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline);
     }
     async getNextJobToRunDefaultQuery(jobName, nextScanAt, lockDeadline, now = new Date()) {
-        var _a;
         log('getNextJobToRunDefaultQuery() called with success');
         /**
          * Query used to find job to run
@@ -119,10 +118,9 @@ class JobDbRepository {
         };
         // Find ONE and ONLY ONE job and set the 'lockedAt' time so that job begins to be processed
         const result = await this.collection.findOneAndUpdate(JOB_PROCESS_WHERE_QUERY, JOB_PROCESS_SET_QUERY, JOB_RETURN_QUERY);
-        return (_a = result === null || result === void 0 ? void 0 : result.value) !== null && _a !== void 0 ? _a : undefined;
+        return result || undefined;
     }
     async getNextJobToRunFiFoModeQuery(jobName, now = new Date()) {
-        var _a;
         log('getNextJobToRunFiFoModeQuery() called with success');
         /**
          * Query used to find job to run
@@ -138,10 +136,9 @@ class JobDbRepository {
         };
         // Find ONE and ONLY ONE job and delete from queue;
         const result = await this.collection.findOneAndDelete(JOB_PROCESS_WHERE_QUERY, JOB_RETURN_QUERY);
-        if (result && result.value) {
-            result.value.lockedAt = now;
-        }
-        return (_a = result === null || result === void 0 ? void 0 : result.value) !== null && _a !== void 0 ? _a : undefined;
+        if (result)
+            result.lockedAt = now;
+        return result || undefined;
     }
     async connect() {
         var _a;
@@ -253,7 +250,7 @@ class JobDbRepository {
                 // Update the job and process the resulting data'
                 log('job already has _id, calling findOneAndUpdate() using _id as query');
                 const result = await this.collection.findOneAndUpdate({ _id: id, name: props.name }, update, { returnDocument: 'after' });
-                return this.processDbResult(job, result.value);
+                return this.processDbResult(job, result);
             }
             if (props.type === 'single') {
                 // Job type set to 'single' so...
@@ -280,7 +277,8 @@ class JobDbRepository {
                     type: 'single'
                 }, update, {
                     upsert: true,
-                    returnDocument: 'after'
+                    returnDocument: 'after',
+                    includeResultMetadata: true
                 });
                 log(`findOneAndUpdate(${props.name}) with type "single" ${((_a = result.lastErrorObject) === null || _a === void 0 ? void 0 : _a.updatedExisting)
                     ? 'updated existing entry'
@@ -300,7 +298,7 @@ class JobDbRepository {
                     upsert: true,
                     returnDocument: 'after'
                 });
-                return this.processDbResult(job, result.value);
+                return this.processDbResult(job, result);
             }
             // If all else fails, the job does not exist yet so we just insert it into MongoDB
             log('using default behavior, inserting new job via insertOne() with props that were set: \n%O', props);

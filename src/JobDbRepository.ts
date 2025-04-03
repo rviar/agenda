@@ -98,7 +98,10 @@ export class JobDbRepository {
 
 	async lockJob(job: JobWithId): Promise<IJobParameters | undefined> {
 		if (this.agenda.attrs.fifoMode) {
-			const resp = await this.collection.findOneAndDelete({ _id: job.attrs._id });
+			const resp = await this.collection.findOneAndDelete(
+				{ _id: job.attrs._id },
+				{ includeResultMetadata: true }
+			);
 			return resp?.value || undefined;
 		}
 		// Query to run against collection to see if we need to lock it
@@ -124,7 +127,7 @@ export class JobDbRepository {
 			options
 		);
 
-		return resp?.value || undefined;
+		return resp || undefined;
 	}
 
 	async getNextJobToRun(
@@ -184,7 +187,7 @@ export class JobDbRepository {
 			JOB_RETURN_QUERY
 		);
 
-		return result?.value ?? undefined;
+		return result || undefined;
 	}
 
 	private async getNextJobToRunFiFoModeQuery(
@@ -213,11 +216,9 @@ export class JobDbRepository {
 			JOB_RETURN_QUERY
 		);
 
-		if (result && result.value) {
-			result.value.lockedAt = now;
-		}
+		if (result) result.lockedAt = now;
 
-		return result?.value ?? undefined;
+		return result || undefined;
 	}
 
 	async connect(): Promise<void> {
@@ -370,7 +371,7 @@ export class JobDbRepository {
 					update,
 					{ returnDocument: 'after' }
 				);
-				return this.processDbResult(job, result.value as IJobParameters<DATA>);
+				return this.processDbResult(job, result as IJobParameters<DATA>);
 			}
 
 			if (props.type === 'single') {
@@ -407,7 +408,8 @@ export class JobDbRepository {
 					update,
 					{
 						upsert: true,
-						returnDocument: 'after'
+						returnDocument: 'after',
+						includeResultMetadata: true
 					}
 				);
 				log(
@@ -434,7 +436,7 @@ export class JobDbRepository {
 					upsert: true,
 					returnDocument: 'after'
 				});
-				return this.processDbResult(job, result.value as IJobParameters<DATA>);
+				return this.processDbResult(job, result as IJobParameters<DATA>);
 			}
 
 			// If all else fails, the job does not exist yet so we just insert it into MongoDB
