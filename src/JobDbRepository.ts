@@ -184,7 +184,7 @@ export class JobDbRepository {
 			JOB_RETURN_QUERY
 		);
 
-		return result.value || undefined;
+		return result?.value ?? undefined;
 	}
 
 	private async getNextJobToRunFiFoModeQuery(
@@ -217,7 +217,7 @@ export class JobDbRepository {
 			result.value.lockedAt = now;
 		}
 
-		return result.value || undefined;
+		return result?.value ?? undefined;
 	}
 
 	async connect(): Promise<void> {
